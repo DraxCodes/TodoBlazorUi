@@ -76,25 +76,18 @@ else
 
     public async Task Delete()
     {
-        try
-        {
-            if (TaskId == string.Empty) { return; }
+        if (TaskId == string.Empty) { return; }
 
-            var json = JsonConvert.SerializeObject(TaskId);
-            var request = new HttpRequestMessage(HttpMethod.Delete, "https://api.drax.codes/api/todo/remove");
-            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        var json = JsonConvert.SerializeObject(TaskId);
+        var request = new HttpRequestMessage(HttpMethod.Delete, "https://api.drax.codes/api/todo/remove");
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await Http.SendAsync(request);
-            response.EnsureSuccessStatusCode();
+        var response = await Http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
 
-            TaskId = string.Empty;
+        TaskId = string.Empty;
 
-            await GetOrRefreshTodoItems();
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e.Message);
-        }
+        await GetOrRefreshTodoItems();
     }
 
     private async Task GetOrRefreshTodoItems()
