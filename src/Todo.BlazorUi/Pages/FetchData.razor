@@ -1,0 +1,117 @@
+﻿@page "/todo"
+@inject HttpClient Http
+
+<h1>Current Todo List From "api.drax.codes"</h1>
+
+@if (todoItems == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var todo in todoItems)
+            {
+                <tr>
+                    <td>@todo.Id</td>
+                    <td>@todo.Description</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <p>Add Item: <input @bind-value="@(TodoDescription)" /> <button @onclick="@(e => Add())">Add</button></p>
+    <p>Delete Item: <input @bind-value="@(TaskId)" /> <button @onclick="@(e => Delete())">Delete</button></p>
+}
+
+@code {
+
+    TodoItem[] todoItems;
+
+    [Parameter]
+    public string TaskId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string TodoDescription { get; set; } = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var username = "drax";
+        var password = "REDACTED";
+
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(
+            System.Text.ASCIIEncoding.ASCII.GetBytes(
+               $"{username}:{password}")));
+
+        await GetOrRefreshTodoItems();
+    }
+
+    public async Task Add()
+    {
+        if (TodoDescription == string.Empty) { return; }
+
+        var todo = new TodoItem
+        {
+            Description = TodoDescription
+        };
+
+        var json = JsonConvert.SerializeObject(todo);
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.drax.codes/api/todo/add");
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await Http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        TodoDescription = string.Empty;
+
+        await GetOrRefreshTodoItems();
+    }
+
+    public async Task Delete()
+    {
+        try
+        {
+            if (TaskId == string.Empty) { return; }
+
+            var json = JsonConvert.SerializeObject(TaskId);
+            var request = new HttpRequestMessage(HttpMethod.Delete, "https://api.drax.codes/api/todo/remove");
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await Http.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            TaskId = string.Empty;
+
+            await GetOrRefreshTodoItems();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
+    }
+
+    private async Task GetOrRefreshTodoItems()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "https://api.drax.codes/api/todo/list");
+
+        var httpResponse = await Http.SendAsync(request);
+        httpResponse.EnsureSuccessStatusCode();
+
+        var json = await httpResponse.Content.ReadAsStringAsync();
+
+        todoItems = JsonConvert.DeserializeObject<TodoItem[]>(json);
+    }
+
+    public class TodoItem
+    {
+        public Guid Id { get; set; }
+        public string Description { get; set; }
+    }
+}
