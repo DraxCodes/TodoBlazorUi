@@ -3,58 +3,130 @@
 
 <h1>Current Todo List From "api.drax.codes"</h1>
 
-@if (todoItems == null)
+@if (todoItems is null)
 {
-    <p><em>Loading...</em></p>
+    <p><em>Loading Please Wait...</em></p>
+    <MatProgressBar Indeterminate="true"></MatProgressBar>
 }
 else
 {
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Id</th>
-                <th>Description</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var todo in todoItems)
-            {
-                <tr>
-                    <td>@todo.Id</td>
-                    <td>@todo.Description</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <div class="text-field-container">
+        <MatTooltip Tooltip="Double Press Enter To Add Item" >
+            <MatTextField @bind-Value="@TodoDescription" Label="Quick Add Todo" Icon="add" IconTrailing="true" Outlined="true" FullWidth="true" OnKeyPress="@Add" RefBack="@context"></MatTextField>
+        </MatTooltip>
+    </div>
 
-    <p>Add Item: <input @bind-value="@(TodoDescription)" /> <button @onclick="@(e => Add())">Add</button></p>
-    <p>Delete Item: <input @bind-value="@(TaskId)" /> <button @onclick="@(e => Delete())">Delete</button></p>
+    <MatAccordion Multi="true">
+        @foreach (var item in todoItems)
+        {
+            <MatExpansionPanel>
+                <MatExpansionPanelSummary>
+                    <MatExpansionPanelHeader>
+                        <div>
+                            <MatCheckbox @bind-Checked="@item.IsCompleted"></MatCheckbox>
+                        </div>
+                    </MatExpansionPanelHeader>
+                        <MatExpansionPanelSubHeader>
+                            @item.Name
+                        </MatExpansionPanelSubHeader>
+                </MatExpansionPanelSummary>
+                <MatExpansionPanelDetails>
+                    <p>
+                        @(
+                            item.Description == string.Empty
+                            ? "No Description Provided."
+                            : item.Description
+                        )
+                    </p>
+                    <p>@($"Due Date: {item.DueDate?.ToString("dddd, dd MMMM yyyy") ?? "None Set."}")</p>
+                </MatExpansionPanelDetails>
+            </MatExpansionPanel>
+
+        }
+    </MatAccordion>
+    <MatButton OnClick="@OpenAddTodoDialog">Add Todo Item</MatButton> <MatButton Icon="remove" OnClick="@Delete" Label="Remove Completed"></MatButton>
+
+
+    <MatDialog @bind-IsOpen="@dialogIsOpen">
+        <MatDialogTitle>Add a new Todo Item</MatDialogTitle>
+        <MatDialogContent>
+            <MatTextField @bind-Value="@TodoName" Label="Name"></MatTextField>
+            <MatTextField @bind-Value="@TodoDescription" Label="Description"></MatTextField>
+            <p>
+                <MatDatePicker @bind-Value="@TodoDate" Label="Pick a DueDate"></MatDatePicker>
+            </p>
+        </MatDialogContent>
+        <MatDialogActions>
+            <MatButton OnClick="@(e => { dialogIsOpen = false; })">Close</MatButton>
+            <MatButton OnClick="@OnAddTodoDialogAddClick">Add</MatButton>
+        </MatDialogActions>
+    </MatDialog>
+
 }
 
 @code {
 
+    bool dialogIsOpen;
+
+    bool isLoggedIn = false;
     TodoItem[] todoItems;
 
-    [Parameter]
+    public string ApiUrl { get; set; } = "http://localhost:5000";
     public string TaskId { get; set; } = string.Empty;
-
-    [Parameter]
     public string TodoDescription { get; set; } = string.Empty;
+    public string TodoName { get; set; }
+    public DateTime? TodoDate { get; set; }
+
 
     protected override async Task OnInitializedAsync()
     {
-        var username = "drax";
-        var password = "REDACTED";
+        var username = "todoist";
+        var password = "todoist";
 
         Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(
             System.Text.ASCIIEncoding.ASCII.GetBytes(
                $"{username}:{password}")));
 
+        await Task.Delay(500);
+        isLoggedIn = true;
+
         await GetOrRefreshTodoItems();
     }
 
-    public async Task Add()
+    void OpenAddTodoDialog()
     {
+        dialogIsOpen = true;
+    }
+
+    async Task OnAddTodoDialogAddClick()
+    {
+        var todo = new TodoItem
+        {
+            Name = TodoName,
+            Description = TodoDescription,
+            DueDate = TodoDate
+        };
+
+        var json = JsonConvert.SerializeObject(todo);
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiUrl}/api/todo/add");
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await Http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        TodoDescription = string.Empty;
+        TodoName = string.Empty;
+        TodoDate = null;
+
+        await GetOrRefreshTodoItems();
+
+        dialogIsOpen = false;
+    }
+
+    public async Task Add(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") { return; }
+
         if (TodoDescription == string.Empty) { return; }
 
         var todo = new TodoItem
@@ -63,7 +135,7 @@ else
         };
 
         var json = JsonConvert.SerializeObject(todo);
-        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.drax.codes/api/todo/add");
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiUrl}/api/todo/add");
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var response = await Http.SendAsync(request);
@@ -74,12 +146,15 @@ else
         await GetOrRefreshTodoItems();
     }
 
-    public async Task Delete()
+    public async Task Delete(MouseEventArgs e)
     {
-        if (TaskId == string.Empty) { return; }
+        if (!todoItems.Any(i => i.IsCompleted == true)) { return; }
 
-        var json = JsonConvert.SerializeObject(TaskId);
-        var request = new HttpRequestMessage(HttpMethod.Delete, "https://api.drax.codes/api/todo/remove");
+        var pendingDeleteItems = todoItems.Where(i => i.IsCompleted == true);
+        var itemsToDelete = pendingDeleteItems.Select(i => i.Id);
+
+        var json = JsonConvert.SerializeObject(itemsToDelete);
+        var request = new HttpRequestMessage(HttpMethod.Delete, $"{ApiUrl}/api/todo/removemany");
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var response = await Http.SendAsync(request);
@@ -92,7 +167,7 @@ else
 
     private async Task GetOrRefreshTodoItems()
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, "https://api.drax.codes/api/todo/list");
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{ApiUrl}/api/todo/list");
 
         var httpResponse = await Http.SendAsync(request);
         httpResponse.EnsureSuccessStatusCode();
@@ -100,11 +175,5 @@ else
         var json = await httpResponse.Content.ReadAsStringAsync();
 
         todoItems = JsonConvert.DeserializeObject<TodoItem[]>(json);
-    }
-
-    public class TodoItem
-    {
-        public Guid Id { get; set; }
-        public string Description { get; set; }
     }
 }
