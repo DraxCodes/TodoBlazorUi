@@ -21,8 +21,8 @@ else
     <h1>Current Todo List From "@ApiUrl"</h1>
 
     <div class="text-field-container">
-        <MatTooltip Tooltip="Double Press Enter To Add Item" >
-            <MatTextField @bind-Value="@TodoDescription" Label="Quick Add Todo" Icon="add" IconTrailing="true" Outlined="true" FullWidth="true" OnKeyPress="@Add" RefBack="@context"></MatTextField>
+        <MatTooltip Tooltip="Double Press Enter To Add Item">
+            <MatTextField @bind-Value="@TodoDescription" Label="Quick Add Todo" Icon="add" IconTrailing="true" Outlined="true" FullWidth="true" OnKeyPress="@AddTodo" RefBack="@context"></MatTextField>
         </MatTooltip>
     </div>
 
@@ -36,9 +36,9 @@ else
                             <MatCheckbox @bind-Checked="@item.IsCompleted"></MatCheckbox>
                         </div>
                     </MatExpansionPanelHeader>
-                        <MatExpansionPanelSubHeader>
-                            @item.Name
-                        </MatExpansionPanelSubHeader>
+                    <MatExpansionPanelSubHeader>
+                        @item.Name
+                    </MatExpansionPanelSubHeader>
                 </MatExpansionPanelSummary>
                 <MatExpansionPanelDetails>
                     <p>
@@ -57,7 +57,7 @@ else
     <MatButton OnClick="@OpenAddTodoDialog">Add Todo Item</MatButton> <MatButton Icon="remove" OnClick="@Delete" Label="Remove Completed"></MatButton>
 
 
-    <MatDialog @bind-IsOpen="@dialogIsOpen">
+    <MatDialog @bind-IsOpen="@todoDialogIsOpen">
         <MatDialogTitle>Add a new Todo Item</MatDialogTitle>
         <MatDialogContent>
             <MatTextField @bind-Value="@TodoName" Label="Name"></MatTextField>
@@ -67,7 +67,7 @@ else
             </p>
         </MatDialogContent>
         <MatDialogActions>
-            <MatButton OnClick="@(e => { dialogIsOpen = false; })">Close</MatButton>
+            <MatButton OnClick="@(e => { todoDialogIsOpen = false; })">Close</MatButton>
             <MatButton OnClick="@OnAddTodoDialogAddClick">Add</MatButton>
         </MatDialogActions>
     </MatDialog>
@@ -76,7 +76,8 @@ else
 
 @code {
 
-    bool dialogIsOpen;
+    bool todoDialogIsOpen;
+
     bool loginDialogIsOpen = true;
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
@@ -127,85 +128,48 @@ else
 
     void OpenAddTodoDialog()
     {
-        dialogIsOpen = true;
+        todoDialogIsOpen = true;
     }
 
     async Task OnAddTodoDialogAddClick()
     {
-        var todo = new TodoItem
-        {
-            Name = TodoName,
-            Description = TodoDescription,
-            DueDate = TodoDate
-        };
+        var todo = new TodoItem(TodoDescription, TodoName, TodoDate);
 
-        var json = JsonConvert.SerializeObject(todo);
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiUrl}/api/todo/add");
-        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        await ApiRequestHandler.AddTodoAsync(todo, ApiUrl);
 
-        var response = await Http.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+        ResetFields();
 
-        TodoDescription = string.Empty;
-        TodoName = string.Empty;
-        TodoDate = null;
+        todoItems = await ApiRequestHandler.GetOrRefreshTodoItemsAsync(ApiUrl);
 
-        await GetOrRefreshTodoItems();
-
-        dialogIsOpen = false;
+        todoDialogIsOpen = false;
     }
 
-    public async Task Add(KeyboardEventArgs e)
+    public async Task AddTodo(KeyboardEventArgs e)
     {
         if (e.Key != "Enter") { return; }
-
         if (TodoDescription == string.Empty) { return; }
 
-        var todo = new TodoItem
-        {
-            Description = TodoDescription
-        };
+        var todo = new TodoItem(TodoDescription);
 
-        var json = JsonConvert.SerializeObject(todo);
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiUrl}/api/todo/add");
-        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        await ApiRequestHandler.AddTodoAsync(todo, ApiUrl);
 
-        var response = await Http.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+        ResetFields();
 
-        TodoDescription = string.Empty;
-
-        await GetOrRefreshTodoItems();
+        todoItems = await ApiRequestHandler.GetOrRefreshTodoItemsAsync(ApiUrl);
     }
 
     public async Task Delete(MouseEventArgs e)
     {
         if (!todoItems.Any(i => i.IsCompleted == true)) { return; }
 
-        var pendingDeleteItems = todoItems.Where(i => i.IsCompleted == true);
-        var itemsToDelete = pendingDeleteItems.Select(i => i.Id);
-
-        var json = JsonConvert.SerializeObject(itemsToDelete);
-        var request = new HttpRequestMessage(HttpMethod.Delete, $"{ApiUrl}/api/todo/removemany");
-        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        var response = await Http.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-
-        TaskId = string.Empty;
-
-        await GetOrRefreshTodoItems();
+        await ApiRequestHandler.DeleteTodosAsync(todoItems, ApiUrl);
+        todoItems = await ApiRequestHandler.GetOrRefreshTodoItemsAsync(ApiUrl);
     }
 
-    private async Task GetOrRefreshTodoItems()
+    private void ResetFields()
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, $"{ApiUrl}/api/todo/list");
-
-        var httpResponse = await Http.SendAsync(request);
-        httpResponse.EnsureSuccessStatusCode();
-
-        var json = await httpResponse.Content.ReadAsStringAsync();
-
-        todoItems = JsonConvert.DeserializeObject<TodoItem[]>(json);
+        TodoDescription = string.Empty;
+        TodoName = string.Empty;
+        TodoDate = null;
     }
 }
