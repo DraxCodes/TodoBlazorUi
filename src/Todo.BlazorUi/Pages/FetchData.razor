@@ -1,15 +1,25 @@
 ﻿@page "/todo"
 @inject HttpClient Http
+@inject TodoApiRequestHandler ApiRequestHandler
 
-<h1>Current Todo List From "api.drax.codes"</h1>
-
-@if (todoItems is null)
+@if (!isLoggedIn)
 {
-    <p><em>Loading Please Wait...</em></p>
-    <MatProgressBar Indeterminate="true"></MatProgressBar>
+    <MatDialog @bind-IsOpen="@loginDialogIsOpen" >
+        <MatDialogTitle>Login & Set the Todo API Url</MatDialogTitle>
+        <MatDialogContent>
+            <MatTextField @bind-Value="@Username" Label="Username"></MatTextField>
+            <MatTextField @bind-Value="@Password" Label="Password"></MatTextField>
+            <MatTextField @bind-Value="@ApiUrl" Label="API Url"></MatTextField>
+        </MatDialogContent>
+        <MatDialogActions>
+            <MatButton OnClick="@LoginAsync">Login</MatButton>
+        </MatDialogActions>
+    </MatDialog>
 }
 else
 {
+    <h1>Current Todo List From "@ApiUrl"</h1>
+
     <div class="text-field-container">
         <MatTooltip Tooltip="Double Press Enter To Add Item" >
             <MatTextField @bind-Value="@TodoDescription" Label="Quick Add Todo" Icon="add" IconTrailing="true" Outlined="true" FullWidth="true" OnKeyPress="@Add" RefBack="@context"></MatTextField>
@@ -67,30 +77,52 @@ else
 @code {
 
     bool dialogIsOpen;
+    bool loginDialogIsOpen = true;
+    public string Username { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
 
-    bool isLoggedIn = false;
+    bool isLoggedIn;
     TodoItem[] todoItems;
 
-    public string ApiUrl { get; set; } = "http://localhost:5000";
+    public string ApiUrl { get; set; } = string.Empty;
     public string TaskId { get; set; } = string.Empty;
     public string TodoDescription { get; set; } = string.Empty;
     public string TodoName { get; set; }
     public DateTime? TodoDate { get; set; }
 
-
-    protected override async Task OnInitializedAsync()
+    async Task LoginAsync()
     {
-        var username = "todoist";
-        var password = "todoist";
-
         Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(
-            System.Text.ASCIIEncoding.ASCII.GetBytes(
-               $"{username}:{password}")));
+           System.Text.ASCIIEncoding.ASCII.GetBytes(
+              $"{Username}:{Password}")));
 
-        await Task.Delay(500);
-        isLoggedIn = true;
+        if (await ApiRequestHandler.HandshakeSuccess(ApiUrl))
+        {
+            isLoggedIn = true;
+            loginDialogIsOpen = false;
+        }
 
-        await GetOrRefreshTodoItems();
+        LoginDetails.AlreadyHasAuth = true;
+        LoginDetails.Username = Username;
+        LoginDetails.Password = Password;
+        LoginDetails.ApiUrl = ApiUrl;
+
+        todoItems = await ApiRequestHandler.GetOrRefreshTodoItemsAsync(ApiUrl);
+
+    }
+
+    protected override void OnInitialized()
+    {
+        if (LoginDetails.AlreadyHasAuth)
+        {
+            ApiUrl = LoginDetails.ApiUrl;
+            Username = LoginDetails.Username;
+            Password = LoginDetails.Password;
+        }
+        else
+        {
+            isLoggedIn = false;
+        }
     }
 
     void OpenAddTodoDialog()
